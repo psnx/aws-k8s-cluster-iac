@@ -1,14 +1,14 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: capstone-deployment
+  name: nginx-deployment
   labels:
-    app: capstone
+    app: nginx
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: capstone
+      app: nginx
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -17,28 +17,26 @@ spec:
   template:
     metadata:
       labels:
-        app: capstone
+        app: nginx
     spec:
       containers:
-      - name: capstone
-        image: psnx/cloudnd-capstone:03651f48e5269b00d9c43045783d15e2ec058df8
+      - name: nginx
+        image: nginx:latest
         ports:
         - containerPort: 80
-      imagePullSecrets:
-      - name: dockerhub
 ---
-#kubectl expose deployment capstone-deployment --type=LoadBalancer --name=cloudnd-capstone --port=80 --target-port=80
+#kubectl expose deployment nginx-deployment --type=LoadBalancer --name=cloudnd-nginx --port=80 --target-port=80
 apiVersion: v1
 kind: Service
 metadata:
-  name: capstone
+  name: nginx
   labels:
-    run: cloudnd-capstone
+    run: nginx
 spec:
   ports:
   - port: 80
     targetPort: 80
     protocol: TCP
   selector:
-    app: capstone
+    app: nginx
   type: LoadBalancer

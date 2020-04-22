@@ -1,0 +1,128 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Amazon EKS Cluster - Control Plane and Node Group'
+
+Parameters:
+  VPCStack:
+    Type: String
+    Description: VPC Stack Name
+
+Mappings:
+  ServicePrincipals:
+    aws-cn:
+      ec2: ec2.amazonaws.com.cn
+    aws:
+      ec2: ec2.amazonaws.com
+
+Resources:
+  ClusterRole:
+    Description: Allows EKS to manage clusters on your behalf.
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+            Effect: Allow
+            Principal:
+              Service:
+                - eks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+        - arn:aws:iam::aws:policy/AmazonEKSServicePolicy
+
+  NodeInstanceRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - !FindInMap [ServicePrincipals, !Ref "AWS::Partition", ec2]
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonEKS_CNI_Policy"
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+      Path: /
+
+  ClusterControlPlaneSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Cluster communication with worker nodes
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${VPCStack}-VPCID"
+
+  ControlPlane:
+    Type: "AWS::EKS::Cluster"
+    Properties:
+      Name: prod
+      Version: "1.15"
+      RoleArn: !GetAtt ClusterRole.Arn
+      ResourcesVpcConfig:
+        SecurityGroupIds:
+          - !Ref ClusterControlPlaneSecurityGroup
+        SubnetIds:
+          - Fn::ImportValue:
+              !Sub "${VPCStack}-PRI01-SN"
+          - Fn::ImportValue:
+              !Sub "${VPCStack}-PRI02-SN"
+          - Fn::ImportValue:
+              !Sub "${VPCStack}-PUB01-SN"
+          - Fn::ImportValue:
+              !Sub "${VPCStack}-PUB02-SN"
+
+
+  EKSNodegroup:
+    Type: 'AWS::EKS::Nodegroup'
+    Properties:
+      ClusterName: !Ref ControlPlane 
+      InstanceTypes:
+      - t3.small
+      NodeRole: !GetAtt NodeInstanceRole.Arn
+      ScalingConfig:
+        MinSize: 1
+        DesiredSize: 2
+        MaxSize: 2
+      Labels:
+        Name: Capstone
+      Subnets:
+      - Fn::ImportValue: !Sub "${VPCStack}-PRI01-SN"
+      - Fn::ImportValue: !Sub "${VPCStack}-PRI02-SN"
+
+      Tags:
+        kubernetes.io/cluster/prod: 'owned' 
+
+Outputs:
+  ClusterName:
+    Value: !Ref ControlPlane
+    Description: Control Plane (Cluster) Name
+    Export:
+      Name:
+        Fn::Sub: "${AWS::StackName}-ClusterName"
+
+  ClusterArn:
+    Value: !GetAtt ControlPlane.Arn
+    Description: Cluster Arn
+    Export:
+      Name:
+        Fn::Sub: "${AWS::StackName}-ClusterArn"
+
+  ClusterEndpoint:
+    Value: !GetAtt ControlPlane.Endpoint
+    Description: Cluster Endpoint
+    Export:
+      Name:
+        Fn::Sub: "${AWS::StackName}-ClusterEndpoint"
+
+  ClusterControlPlaneSecurityGroup:
+    Value: !Ref ClusterControlPlaneSecurityGroup
+    Description: ClusterControlPlaneSecurityGroup
+    Export:
+      Name:
+        Fn::Sub: "${AWS::StackName}-ClusterControlPlaneSecurityGroup"
+
